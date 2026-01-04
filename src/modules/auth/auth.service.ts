@@ -1,0 +1,394 @@
+import * as bcrypt from "bcrypt";
+import { ConfigService } from "@nestjs/config";
+import { JwtService } from "@nestjs/jwt";
+import {
+  BadRequestException,
+  Injectable,
+  UnauthorizedException,
+  NotFoundException,
+  HttpException,
+  HttpStatus,
+} from "@nestjs/common";
+import { UsersService } from "../users/users.service";
+import { SignUpDto } from "./dto/sign-up.dto";
+import { SignInDto } from "./dto/sign-in.dto";
+import { TokenPayload } from "./interfaces/token.interface";
+import { EmailService } from "../email/email.service";
+import { GoogleAuthService } from "./google-auth.service";
+import { ForgotPasswordDto } from "./dto/forgot-password.dto";
+import { ResetPasswordDto } from "./dto/reset-password.dto";
+import { User, UserStatus } from "generated/prisma/browser";
+import { Message } from "src/common/constants/message-exception";
+
+export interface GoogleUser {
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  picture?: string;
+}
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly usersService: UsersService,
+    private readonly jwtService: JwtService,
+    private readonly emailService: EmailService,
+    private readonly googleAuthService: GoogleAuthService
+  ) { }
+
+  private get accessTokenPrivateKey(): string {
+    return this.configService.get<string>("JWT_ACCESS_TOKEN_PRIVATE_KEY") || "";
+  }
+
+  private get accessTokenPublicKey(): string {
+    return this.configService.get<string>("JWT_ACCESS_TOKEN_PUBLIC_KEY") || "";
+  }
+
+  private get refreshTokenPrivateKey(): string {
+    return this.configService.get<string>("JWT_REFRESH_TOKEN_PRIVATE_KEY") || "";
+  }
+
+  private get refreshTokenPublicKey(): string {
+    return this.configService.get<string>("JWT_REFRESH_TOKEN_PUBLIC_KEY") || "";
+  }
+
+  async signUp(signUpDto: SignUpDto): Promise<{
+    user: Partial<User>;
+    tokens: any;
+    message: string;
+    verifyToken?: string;
+  }> {
+    const existingUser = await this.usersService.findByEmail(signUpDto.email);
+
+    if (existingUser) {
+      if (existingUser.isVerified) {
+        throw new UnauthorizedException(Message.USER_ALREADY_EXISTS);
+      } else {
+        // Xóa currentVerifyToken cũ
+        await this.usersService.update(existingUser.id, {
+          currentVerifyToken: null as any,
+        });
+
+        // Tạo verifyToken mới
+        const verifyToken = await this.generateVerifyToken(
+          existingUser.id,
+          existingUser.email
+        );
+
+        // Gán lại currentVerifyToken
+        await this.usersService.update(existingUser.id, {
+          currentVerifyToken: verifyToken,
+        });
+
+        // Gửi lại email xác thực
+        await this.emailService.sendEmailVerification(
+          existingUser.email,
+          verifyToken
+        );
+
+        return {
+          user: { ...existingUser, password: undefined },
+          tokens: null,
+          verifyToken,
+          message: Message.EMAIL_VERIFICATION_RESEND_SUCCESS,
+        };
+      }
+    }
+
+    // Tạo user mới
+    const user = await this.usersService.create({
+      ...signUpDto,
+      isVerified: false,
+    });
+
+    // Tạo verifyToken mới
+    const verifyToken = await this.generateVerifyToken(user.id, user.email);
+
+    // Gán currentVerifyToken
+    await this.usersService.update(user.id, {
+      currentVerifyToken: verifyToken,
+    });
+
+    // Gửi email xác thực
+    await this.emailService.sendEmailVerification(user.email, verifyToken);
+
+    // Generate tokens
+    const tokens = await this.generateTokens(user.id, user.email);
+
+    // Save refresh token
+    await this.usersService.updateRefreshToken(user.id, tokens.refresh_token);
+
+    const { password, ...userResponse } = user;
+
+    const updatedUser = await this.usersService.findOne(user.id);
+
+    return {
+      user: userResponse,
+      tokens,
+      verifyToken,
+      message: Message.EMAIL_VERIFICATION_SEND_SUCCESS,
+    };
+  }
+
+  async resendVerifyEmail(email: string) {
+    const user = await this.usersService.findByEmail(email);
+    if (!user) {
+      return { message: Message.USER_NOT_FOUND };
+    }
+    if (user.isVerified == true) {
+      return { message: Message.EMAIL_ALREADY_VERIFY };
+    }
+    // Nếu chưa verify, gửi lại email xác thực
+    // Xóa currentVerifyToken nếu có
+    await this.usersService.update(user.id, { currentVerifyToken: null as any });
+
+    // Tạo mới và update mới
+    const verifyToken = await this.generateVerifyToken(user.id, user.email);
+
+    await this.usersService.update(user.id, {
+      currentVerifyToken: verifyToken,
+    });
+
+    await this.emailService.sendEmailVerification(user.email, verifyToken);
+    return { message: Message.EMAIL_VERIFICATION_RESEND_SUCCESS };
+  }
+
+  async signIn(
+    signInDto: SignInDto
+  ): Promise<{ user: Partial<User>; tokens: any }> {
+    const user = await this.validateUser(signInDto.email, signInDto.password);
+    if (!user) {
+      throw new UnauthorizedException(Message.USER_UNAUTHORIZATION);
+    }
+
+    const isActive = user.status === UserStatus.ACTIVE;
+    if (!isActive) {
+      throw new UnauthorizedException(Message.USER_IN_ACTIVE);
+    }
+    if (!user.isVerified) {
+      throw new UnauthorizedException(Message.USER_NOT_VERIFIED);
+    }
+
+    const tokens = await this.generateTokens(user.id, user.email);
+    await this.usersService.updateRefreshToken(user.id, tokens.refresh_token);
+
+    // Remove password from response
+    const { password, ...userResponse } = user;
+
+    return { user: userResponse, tokens };
+  }
+
+  async authenticateWithGoogle(
+    googleToken: string
+  ): Promise<{ user: Partial<User>; tokens: any }> {
+    try {
+      // Verify Google token with Google's servers
+      const googlePayload =
+        await this.googleAuthService.verifyGoogleToken(googleToken);
+
+      // Find or create user
+      const user =
+        await this.googleAuthService.findOrCreateGoogleUser(googlePayload);
+
+      const isActive = user.status === UserStatus.ACTIVE;
+      if (!isActive) {
+        throw new HttpException(
+          Message.USER_IN_ACTIVE,
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
+      const tokens = await this.generateTokens(user.id, user.email);
+      await this.usersService.updateRefreshToken(user.id, tokens.refresh_token);
+
+      const { password, ...userResponse } = user;
+      return { user: userResponse, tokens };
+    } catch (error) {
+      throw new BadRequestException(Message.GOOGLE_AUTH_ERROR);
+    }
+  }
+
+  async authenticateWithGoogleUser(
+    googleUser: any
+  ): Promise<{ user: Partial<User>; tokens: any }> {
+    try {
+      // Find or create user
+      const user =
+        await this.googleAuthService.findOrCreateGoogleUser(googleUser);
+
+      const isActive = user.status === UserStatus.ACTIVE;
+      if (!isActive) {
+        throw new HttpException(
+          Message.USER_IN_ACTIVE,
+          HttpStatus.BAD_REQUEST
+        );
+      }
+
+      const tokens = await this.generateTokens(user.id, user.email);
+      await this.usersService.updateRefreshToken(user.id, tokens.refresh_token);
+
+      // Remove password from response
+      const { password, ...userResponse } = user;
+
+      // Update is verified attribute via UsersService helper
+      await this.usersService.update(user.id, { currentVerifyToken: null as any });
+
+      return { user: userResponse, tokens };
+    } catch (error) {
+      throw new BadRequestException(Message.GOOGLE_AUTH_ERROR);
+    }
+  }
+
+  async validateUser(email: string, password: string): Promise<User | null> {
+    const user = await this.usersService.findByEmail(email);
+    if (user && (await bcrypt.compare(password, user.password))) {
+      return user;
+    }
+    return null;
+  }
+
+  async refreshTokens(userId: string, refreshToken: string): Promise<any> {
+    const user = await this.usersService.getUserIfRefreshTokenMatches(
+      refreshToken,
+      userId
+    );
+    if (!user) {
+      throw new UnauthorizedException(Message.TOKEN_INVALID);
+    }
+
+    const tokens = await this.generateTokens(user.id, user.email);
+    await this.usersService.updateRefreshToken(user.id, tokens.refresh_token);
+
+    return tokens;
+  }
+
+  async verifyEmail(token: string): Promise<any> {
+    try {
+      // Giải mã token với RSA public key
+      const payload = this.jwtService.verify(token, {
+        publicKey: this.accessTokenPublicKey,
+        algorithms: ["RS256"],
+      });
+
+      const user = await this.usersService.findByEmail(payload.email);
+      if (!user) {
+        throw new BadRequestException(Message.USER_NOT_FOUND);
+      }
+
+      // Nếu user đã verify = true -> xóa currentVerifyToken -> trả về message
+      if (user.isVerified == true) {
+        await this.usersService.update(user.id, { currentVerifyToken: null as any });
+        return { message: Message.EMAIL_ALREADY_VERIFIED };
+      }
+
+      // Giải token xem còn hạn không ?
+      await this.usersService.verifyByToken(user.id, token);
+
+      return { message: Message.EMAIL_VERIFICATION_SUCCESS };
+    } catch (error) {
+      if (error.name === "TokenExpiredError") {
+        throw new BadRequestException(Message.TOKEN_EXPIRED);
+      }
+      if (error.name === "JsonWebTokenError") {
+        throw new BadRequestException(Message.TOKEN_INVALID);
+      }
+      if (error.message === "Token invalid or already used") {
+        throw new BadRequestException(Message.TOKEN_ALREADY_USED);
+      }
+      throw new BadRequestException(Message.VERIFY_TOKEN_EXPIRED);
+    }
+  }
+
+  async signOut(userId: string): Promise<void> {
+    await this.usersService.removeRefreshToken(userId);
+  }
+
+  private async generateTokens(userId: string, email: string): Promise<any> {
+    const payload: TokenPayload = { sub: userId, email };
+
+    const accessToken = this.jwtService.sign(payload, {
+      privateKey: this.accessTokenPrivateKey,
+      expiresIn: `${this.configService.get("JWT_ACCESS_TOKEN_EXPIRATION_TIME")}s`,
+      algorithm: "RS256",
+    });
+
+    const refreshToken = this.jwtService.sign(payload, {
+      privateKey: this.refreshTokenPrivateKey,
+      expiresIn: `${this.configService.get("JWT_REFRESH_TOKEN_EXPIRATION_TIME")}s`,
+      algorithm: "RS256",
+    });
+
+    return {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    };
+  }
+
+  private async generateVerifyToken(
+    userId: string,
+    email: string
+  ): Promise<any> {
+    const payload: TokenPayload = { sub: userId, email };
+
+    const verifyToken = this.jwtService.sign(payload, {
+      privateKey: this.accessTokenPrivateKey,
+      expiresIn: "30m",
+      algorithm: "RS256",
+    });
+
+    return verifyToken;
+  }
+
+  async forgotPassword(forgotPasswordDto: ForgotPasswordDto) {
+    const { email } = forgotPasswordDto;
+
+    const user = await this.usersService.findByEmail(email);
+
+    if (!user) {
+      throw new NotFoundException(Message.USER_NOT_FOUND);
+    }
+
+    const resetToken = this.jwtService.sign(
+      { sub: user.id, email: user.email },
+      {
+        privateKey: this.accessTokenPrivateKey,
+        expiresIn: "30m",
+        algorithm: "RS256",
+      }
+    );
+
+    await this.emailService.sendResetPasswordEmail(user.email, resetToken);
+
+    return {
+      message: Message.PASSWORD_RESET_EMAIL_SENT,
+    };
+  }
+
+  async resetPassword(resetPasswordDto: ResetPasswordDto) {
+    const { token, newPassword } = resetPasswordDto;
+    let payload: TokenPayload;
+    try {
+      payload = this.jwtService.verify(token, {
+        publicKey: this.accessTokenPublicKey,
+        algorithms: ["RS256"],
+      });
+    } catch (error) {
+      throw new UnauthorizedException("Token is invalid or has expired");
+    }
+
+    const user = await this.usersService.findByEmail(payload.email);
+    if (!user) {
+      throw new NotFoundException(Message.USER_NOT_FOUND);
+    }
+
+    // Cập nhật password
+    await this.usersService.update(user.id, {
+      password: newPassword,
+    });
+
+    return {
+      message: Message.PASSWORD_RESET_SUCCESS,
+    };
+  }
+}

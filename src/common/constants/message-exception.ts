@@ -1,0 +1,25 @@
+export const Message = {
+    USER_NOT_FOUND: 'User not found',
+    INVALID_CREDENTIALS: 'Invalid credentials',
+    ACCESS_DENIED: 'Access denied',
+    RESOURCE_NOT_FOUND: 'Resource not found',
+    INTERNAL_SERVER_ERROR: 'Internal server error',
+    USER_UNAUTHORIZATION: 'User is not authorized to perform this action',
+    EMAIL_ALREADY_VERIFY: 'Email has already been verified',
+    EMAIL_ALREADY_VERIFIED: 'Email has already been verified',
+    VERIFY_TOKEN_EXPIRED: 'Verification token is expired',
+    PASSWORD_RESET_SUCCESS: 'Password has been reset successfully',
+    PASSWORD_RESET_EMAIL_SENT: 'Password reset email sent',
+    EMAIL_VERIFICATION_SEND_SUCCESS: 'Verification email sent successfully',
+    EMAIL_VERIFICATION_RESEND_SUCCESS: 'Verification email re-sent successfully',
+    EMAIL_VERIFICATION_SUCCESS: 'Email verified successfully',
+    USER_ALREADY_EXISTS: 'User already exists',
+    USER_IN_ACTIVE: 'User is inactive',
+    USER_NOT_VERIFIED: 'User email is not verified',
+    GOOGLE_AUTH_ERROR: 'Google authentication failed',
+    TOKEN_INVALID: 'Token is invalid',
+    TOKEN_ALREADY_USED: 'Token is already used',
+    TOKEN_EXPIRED: 'Token has expired',
+} as const;
+
+export type MessageKey = keyof typeof Message;
