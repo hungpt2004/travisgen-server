@@ -16,7 +16,6 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDTO } from './dto/change-password.dto';
 import { JwtAccessTokenGuard } from '../auth/guards/jwt-access-token.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthRequest } from '../auth/auth.controller';
 
 @ApiTags('users')
@@ -33,7 +32,7 @@ export class UsersController {
 	}
 
 	@Get()
-	@UseGuards(JwtAccessTokenGuard, RolesGuard)
+	@UseGuards(JwtAccessTokenGuard)
 	@ApiOperation({ summary: 'Get all users (Admin only)' })
 	@ApiResponse({ status: 200, description: 'List of users' })
 	findAll() {

@@ -7,7 +7,6 @@ import { LocalStrategy } from "./strategies/local.strategy";
 import { GoogleStrategy } from "./strategies/google.strategy";
 import { JwtModule } from "@nestjs/jwt";
 import { GoogleAuthService } from "./google-auth.service";
-import { RolesGuard } from "./guards/roles.guard";
 import { UsersModule } from "../users/users.module";
 import { PassportModule } from "@nestjs/passport";
 import { EmailModule } from "../email/email.module";
@@ -22,8 +21,7 @@ import { EmailModule } from "../email/email.module";
     GoogleStrategy,
     JwtAccessTokenStrategy,
     JwtRefreshTokenStrategy,
-    RolesGuard,
   ],
-  exports: [RolesGuard],
+  exports: [],
 })
 export class AuthModule { }

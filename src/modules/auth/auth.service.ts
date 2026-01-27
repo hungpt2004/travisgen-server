@@ -17,8 +17,9 @@ import { EmailService } from "../email/email.service";
 import { GoogleAuthService } from "./google-auth.service";
 import { ForgotPasswordDto } from "./dto/forgot-password.dto";
 import { ResetPasswordDto } from "./dto/reset-password.dto";
-import { User, UserStatus } from "generated/prisma/browser";
 import { Message } from "src/common/constants/message-exception";
+import { User } from "src/types/user.types";
+import { UserStatus } from "../users/enum/user-enum";
 
 export interface GoogleUser {
   email: string;
@@ -162,11 +163,10 @@ export class AuthService {
       throw new UnauthorizedException(Message.USER_UNAUTHORIZATION);
     }
 
-    const isActive = user.status === UserStatus.ACTIVE;
-    if (!isActive) {
+    if (user.status == UserStatus.inactive) {
       throw new UnauthorizedException(Message.USER_IN_ACTIVE);
     }
-    if (!user.isVerified) {
+    if (user.isVerified == false) {
       throw new UnauthorizedException(Message.USER_NOT_VERIFIED);
     }
 
@@ -191,8 +191,7 @@ export class AuthService {
       const user =
         await this.googleAuthService.findOrCreateGoogleUser(googlePayload);
 
-      const isActive = user.status === UserStatus.ACTIVE;
-      if (!isActive) {
+      if (user.status == UserStatus.inactive) {
         throw new HttpException(
           Message.USER_IN_ACTIVE,
           HttpStatus.BAD_REQUEST
@@ -217,8 +216,7 @@ export class AuthService {
       const user =
         await this.googleAuthService.findOrCreateGoogleUser(googleUser);
 
-      const isActive = user.status === UserStatus.ACTIVE;
-      if (!isActive) {
+      if (user.status == UserStatus.inactive) {
         throw new HttpException(
           Message.USER_IN_ACTIVE,
           HttpStatus.BAD_REQUEST
