@@ -1,0 +1,17 @@
+# Docs folder được auto-generate
+# Không commit generated files nếu không cần thiết
+
+# Generated documentation files
+*.md
+!README.md
+
+# Swagger spec
+swagger.json
+
+# Obsidian configuration (optional - uncomment nếu không muốn share)
+# .obsidian/
+
+# Keep folder structure
+!.gitkeep
+endpoints/.gitkeep
+schemas/.gitkeep

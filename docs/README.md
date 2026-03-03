@@ -1,0 +1,234 @@
+# 📚 TravisGen API Documentation
+
+> API documentation được tự động generate từ Swagger/OpenAPI specification
+
+## 📖 Về thư mục này
+
+Thư mục này chứa API documentation được tạo tự động từ Swagger specs, được format theo chuẩn Obsidian để dễ dàng navigation và tìm kiếm.
+
+## 🚀 Cách sử dụng
+
+### Option 1: Xem trong Obsidian (Khuyến nghị)
+
+1. Tải và cài đặt [Obsidian](https://obsidian.md/)
+2. Mở Obsidian và chọn "Open folder as vault"
+3. Chọn thư mục `docs/` này
+4. Bắt đầu từ file `API-Index.md`
+
+**Ưu điểm:**
+- ✅ Navigation nhanh giữa các endpoints
+- ✅ Graph view để visualize API structure
+- ✅ Search mạnh mẽ
+- ✅ Có thể thêm notes và comments riêng
+
+### Option 2: Xem trong VS Code
+
+1. Cài extension "Markdown Preview Enhanced" hoặc "Foam"
+2. Mở file `API-Index.md`
+3. Click vào các links để navigate
+
+### Option 3: Xem trong Browser
+
+Chạy một trong các lệnh sau:
+
+```bash
+# Sử dụng npm script
+npm run docs:server
+
+# Hoặc PowerShell script
+.\make.ps1 docs-server
+
+# Hoặc trực tiếp
+cd docs && npx http-server -p 8080
+```
+
+Sau đó mở browser và truy cập: http://localhost:8080
+
+## 🔄 Generate Documentation
+
+### Tự động generate
+
+Có nhiều cách để generate docs:
+
+#### 1. Sử dụng npm scripts
+
+```bash
+# Generate một lần
+npm run docs:generate
+
+# Auto-generate khi có thay đổi trong src/
+npm run docs:watch
+```
+
+#### 2. Sử dụng PowerShell script (Windows)
+
+```powershell
+# Generate một lần
+.\make.ps1 docs
+
+# Auto-generate mỗi 30 giây
+.\make.ps1 docs-watch
+
+# Mở thư mục docs
+.\make.ps1 docs-open
+```
+
+#### 3. Sử dụng Makefile (Linux/Mac hoặc Windows với GNU Make)
+
+```bash
+# Generate một lần
+make docs
+
+# Auto-generate mỗi 30 giây
+make docs-watch
+
+# Mở thư mục docs
+make docs-open
+```
+
+#### 4. Chạy trực tiếp script
+
+```bash
+node scripts/generate-api-docs.js
+```
+
+### ⚠️ Lưu ý quan trọng
+
+**Server phải đang chạy** trước khi generate docs!
+
+```bash
+# Terminal 1: Start server
+npm run start:dev
+
+# Terminal 2: Generate docs
+npm run docs:generate
+```
+
+## 📁 Cấu trúc thư mục
+
+```
+docs/
+├── API-Index.md              # Trang chủ, tổng quan toàn bộ API
+├── {Tag}-APIs.md             # Index theo từng tag/module
+├── swagger.json              # Raw Swagger specification
+├── endpoints/                # Chi tiết từng endpoint
+│   ├── GET-users.md
+│   ├── POST-auth-login.md
+│   └── ...
+├── schemas/                  # Data schemas (sẽ tạo nếu cần)
+└── .obsidian/                # Obsidian configuration
+```
+
+## 🎯 Workflow khuyến nghị
+
+### Khi phát triển API mới:
+
+1. **Viết code API với Swagger decorators**
+   ```typescript
+   @ApiTags('users')
+   @ApiOperation({ summary: 'Get user by ID' })
+   @ApiResponse({ status: 200, description: 'User found' })
+   @Get(':id')
+   getUser(@Param('id') id: string) { ... }
+   ```
+
+2. **Start dev server**
+   ```bash
+   npm run start:dev
+   ```
+
+3. **Generate docs**
+   ```bash
+   npm run docs:generate
+   ```
+
+4. **Review trong Obsidian hoặc browser**
+
+### Setup auto-generation (Optional):
+
+Thêm vào workflow để tự động generate docs mỗi khi save file:
+
+```bash
+# Terminal 1: Dev server
+npm run start:dev
+
+# Terminal 2: Auto-generate docs
+npm run docs:watch
+```
+
+## 🔗 Links hữu ích
+
+- **Swagger UI**: http://localhost:4000/api-docs
+- **API Server**: http://localhost:4000
+- **Swagger JSON**: http://localhost:4000/api-docs-json
+
+## 🛠️ Customization
+
+Bạn có thể customize script generate tại: `scripts/generate-api-docs.js`
+
+### Các options có thể customize:
+
+- Format output markdown
+- Thêm/bớt sections
+- Thay đổi template
+- Thêm custom tags/categorization
+- Thêm examples/code samples
+
+## 📝 Best Practices
+
+1. **Luôn thêm Swagger decorators đầy đủ:**
+   - `@ApiTags()` - Gom nhóm endpoints
+   - `@ApiOperation()` - Mô tả ngắn gọn
+   - `@ApiResponse()` - Document các response codes
+   - `@ApiBody()` - Document request body
+   - `@ApiBearerAuth()` - Document authentication
+
+2. **Generate docs thường xuyên:**
+   - Sau khi thêm endpoint mới
+   - Sau khi update API
+   - Trước khi commit code
+
+3. **Review docs trong Obsidian:**
+   - Kiểm tra links hoạt động
+   - Verify examples chính xác
+   - Thêm notes nếu cần
+
+## 🤝 Integration với Obsidian
+
+### Features được support:
+
+- ✅ **Internal links**: `[[endpoint-name]]`
+- ✅ **Tags**: `#auth`, `#users`, etc.
+- ✅ **Code blocks**: Với syntax highlighting
+- ✅ **Tables**: Cho parameters, responses
+- ✅ **Graphs**: Visualize API relationships
+
+### Plugins khuyến nghị:
+
+- **Dataview**: Query và filter endpoints
+- **Graph Analysis**: Visualize API structure
+- **Tag Wrangler**: Manage tags
+- **Advanced Tables**: Better table editing
+
+## 📞 Support
+
+Nếu gặp vấn đề:
+
+1. Kiểm tra server đang chạy: `curl http://localhost:4000/api-docs-json`
+2. Kiểm tra credentials trong `.env`:
+   ```
+   SWAGGER_ACCOUNT_NAME=admin
+   SWAGGER_ACCOUNT_PASS=admin
+   ```
+3. Chạy lại với verbose: `node scripts/generate-api-docs.js`
+
+## 🔄 Version
+
+Documentation version tương ứng với API version trong `package.json`.
+
+**Current Version**: 0.0.1
+
+---
+
+*Auto-generated by TravisGen Documentation System*
+*Last updated: Check timestamp in API-Index.md*

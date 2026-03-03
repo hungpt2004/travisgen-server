@@ -64,4 +64,36 @@ export function configSwagger(app: INestApplication) {
 		customSiteTitle: 'TravisGen Documentation',
 		customfavIcon: '/swagger.ico',
 	});
+
+	// Endpoint để export Swagger JSON (cho auto-generation docs)
+	http_adapter.get('/api-docs-json', (req: Request, res: Response) => {
+		// Kiểm tra authentication tương tự như /api-docs
+		if (!req.headers.authorization) {
+			res.status(401);
+			res.set('WWW-Authenticate', 'Basic');
+			return res.send('Authentication required');
+		}
+
+		function parseAuthHeader(input: string): { name: string; pass: string } {
+			const [, encodedPart] = input.split(' ');
+			const buff = Buffer.from(encodedPart, 'base64');
+			const text = buff.toString('ascii');
+			const [name, pass] = text.split(':');
+			return { name, pass };
+		}
+
+		const credentials = parseAuthHeader(req.headers.authorization);
+
+		if (
+			credentials?.name !== api_documentation_credentials.name ||
+			credentials?.pass !== api_documentation_credentials.pass
+		) {
+			res.status(401);
+			res.set('WWW-Authenticate', 'Basic');
+			return res.send('Invalid credentials');
+		}
+
+		// Return Swagger JSON
+		res.json(document);
+	});
 }
